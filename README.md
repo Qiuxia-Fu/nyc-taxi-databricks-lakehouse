@@ -2,7 +2,7 @@
 
 A Medallion lakehouse (Bronze → Silver → Gold) built on **Databricks Free Edition** with **Delta Lake** and **Unity Catalog**, using 22.6M NYC Yellow Taxi trips (Jan–Mar 2019).
 
-The project rebuilds an earlier PySpark batch pipeline ([NYC_Taxi_PySpark_Batch](https://github.com/Qiuxia-Fu/NYC_Taxi_PySpark_Batch)) as a lakehouse. It adds ACID tables, versioned history, CDC upserts with `MERGE`, incremental Gold refresh from Change Data Feed, least-privilege governance and an orchestrated, Git-sourced Job. The row counts reconcile at every layer.
+The project rebuilds an earlier PySpark batch pipeline ([NYC_Taxi_PySpark_Batch](https://github.com/Qiuxia-Fu/NYC_Taxi_PySpark_Batch)) as a lakehouse. It adds ACID tables, versioned history, CDC upserts with `MERGE`, least-privilege governance and an orchestrated, Git-sourced Job. The row counts reconcile at every layer.
 
 ## Architecture
 
@@ -58,13 +58,7 @@ Change events (`INSERT` / `UPDATE` / `DELETE`, with `_change_ts`) land in a Bron
 
 The result was verified three ways: `operationMetrics`, a row-level diff using time travel, and `table_changes`.
 
-### 3. Incremental Gold from Change Data Feed
-
-Affected `pickup_date`s are collected from **all** change types, including pre-images and deletes. Only those dates are recomputed and swapped in with `replaceWhere`. Recomputing a whole date is used instead of adding and subtracting values, because averages are not additive.
-
-A full-column comparison against a complete rebuild caught a **logic drift**: the incremental aggregation had left out `round(avg, 2)`. The fix was to share one aggregation definition between the incremental and full paths. Final check: 90 days, 0 count mismatches, max float difference 0.
-
-### 4. Least-privilege governance
+### 3. Least-privilege governance
 
 | Role | landing | bronze | silver | gold |
 |---|---|---|---|---|
@@ -122,9 +116,6 @@ The Job definition is in [`jobs/nyc_taxi_pipeline.yml`](jobs/nyc_taxi_pipeline.y
 
 ## Known limitations and future work
 
-- **File layout:** `MERGE` leaves deletion vectors and small files. Next steps are Liquid Clustering on `pickup_date` and relying on Predictive Optimization for `OPTIMIZE` and `VACUUM`.
-- **Full rebuilds:** Silver and Gold are rebuilt in full on every run. At larger scale, Silver should become fully incremental (Auto Loader or streaming), with a stored CDF watermark driving incremental Gold.
-- **Duplicated aggregation logic:** the Gold aggregation is defined in two notebooks. It should move to a shared Python module imported by both.
 - **Credentials:** the Job pulls code with a personal access token, which expires. In production the Job should run as a service principal with its own Git credential.
 - **Single-user environment:** grants were verified through grant records and audit views. A multi-user setup should add a negative test with an analyst account.
 - **Simulated CDC:** change events are generated from Silver. A real source would be a database CDC stream with sequence numbers to break ties between events that share a timestamp.
